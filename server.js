@@ -115,15 +115,15 @@ io.on("connection", (socket) => {
     const lastBidderIndex = (room.turnIndex - 1 + room.players.length) % room.players.length;
     const lastBidder = room.players[lastBidderIndex];
 
-    // Determine loser
+    // Determine loser correctly:
+    // If actualCount >= lastBid.count -> last bid was correct -> caller loses
+    // Else last bidder loses
     let loser;
     let resultText;
     if (actualCount >= lastBid.count) {
-      // Bid was correct, caller loses
       loser = caller;
       resultText = `${caller.name} called Fluff wrongly and loses a die.`;
     } else {
-      // Bid was wrong, last bidder loses
       loser = lastBidder;
       resultText = `${caller.name} called Fluff correctly! ${lastBidder.name} loses a die.`;
     }
@@ -133,13 +133,13 @@ io.on("connection", (socket) => {
 
     // Check if game over (no dice left)
     if (loser.dice.length === 0) {
-      io.to(roomId).emit("gameOver", { winner: room.players.find(p => p.id !== loser.id).name || "Unknown" });
+      io.to(roomId).emit("gameOver", { winner: room.players.find(p => p.id !== loser.id)?.name || "Unknown" });
       // Reset game state for this room
       delete rooms[roomId];
       return;
     }
 
-    // Reset bids and reroll dice for next round
+    // Reset bids and reroll dice for next round, keeping dice count per player
     room.bids = [];
     room.players.forEach(p => {
       p.dice = rollDice(p.dice.length);
