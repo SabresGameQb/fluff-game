@@ -99,7 +99,7 @@ io.on("connection", (socket) => {
     const lastBid = room.bids.length > 0 ? room.bids[room.bids.length - 1] : null;
     if (!lastBid) return;
 
-    // Count dice that match lastBid.value or wilds (1's)
+    // Count dice that match lastBid.value or wilds (1's 🐍 count as wildcards)
     let actualCount = 0;
     room.players.forEach(player => {
       player.dice.forEach(die => {
@@ -116,8 +116,8 @@ io.on("connection", (socket) => {
     const lastBidder = room.players[lastBidderIndex];
 
     // Determine loser correctly:
-    // If actualCount >= lastBid.count -> last bid was correct -> caller loses
-    // Else last bidder loses
+    // If actualCount >= lastBid.count -> last bid was correct -> caller loses (wrong call)
+    // Else last bidder loses (bid was wrong)
     let loser;
     let resultText;
     if (actualCount >= lastBid.count) {
@@ -133,14 +133,23 @@ io.on("connection", (socket) => {
 
     // Check if game over (no dice left)
     if (loser.dice.length === 0) {
-      io.to(roomId).emit("gameOver", { winner: room.players.find(p => p.id !== loser.id)?.name || "Unknown" });
+      // Find the winner (last player with dice left)
+      const winner = room.players.find(p => p.dice.length > 0)?.name || "Unknown";
+      io.to(roomId).emit("gameOver", { winner });
+
       // Reset game state for this room
       delete rooms[roomId];
       return;
     }
 
-    // Reset bids and reroll dice for next round, keeping dice count per player
+    // Reset bids for new round
     room.bids = [];
+
+    // Reset turnIndex to loser’s next player (so game continues from correct player)
+    room.turnIndex = room.players.indexOf(loser);
+    room.turnIndex = (room.turnIndex + 1) % room.players.length;
+
+    // Reroll dice for each player, keeping dice count same
     room.players.forEach(p => {
       p.dice = rollDice(p.dice.length);
     });
