@@ -154,6 +154,11 @@ io.on("connection", (socket) => {
       p.dice = rollDice(p.dice.length);
     });
 
+    // IMPORTANT: Send each player's new dice to them individually, so they update their dice display!
+    room.players.forEach(p => {
+      io.to(p.id).emit("yourDice", p.dice);
+    });
+
     io.to(roomId).emit("result", { actualCount, lastBid, resultText, loserName: loser.name });
 
     io.to(roomId).emit(
