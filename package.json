@@ -1,9 +1,10 @@
 {
   "name": "fluff-game",
   "version": "1.0.0",
-  "main": "server/index.js",
+  "description": "Online Fluff Dice Game",
+  "main": "server.js",
   "scripts": {
-    "start": "node server/index.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",

@@ -1,0 +1,20 @@
+body {
+  background: #222;
+  color: #eee;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0; padding: 20px;
+}
+
+input, button {
+  margin: 5px 0;
+  padding: 5px 10px;
+  font-size: 1rem;
+}
+
+button {
+  cursor: pointer;
+}
+
+#playersList li {
+  margin-bottom: 5px;
+}
