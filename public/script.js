@@ -19,6 +19,7 @@ const currentBidDisplay = document.getElementById("currentBidDisplay");
 const resultMessage = document.getElementById("resultMessage");
 
 let currentTurnId = null;
+let currentBids = []; // Track bids to prevent duplicates on client side (optional)
 
 joinBtn.onclick = () => {
   const name = nameInput.value.trim();
@@ -43,6 +44,12 @@ placeBidBtn.onclick = () => {
     return;
   }
 
+  // Optional: check if bid already played locally
+  if (currentBids.some(b => b.count === count && b.value === value)) {
+    alert("This exact bid has already been made this round.");
+    return;
+  }
+
   socket.emit("placeBid", {
     roomId: roomNameDisplay.textContent,
     count,
@@ -56,18 +63,15 @@ callFluffBtn.onclick = () => {
   resultMessage.textContent = "";
 };
 
-// ** This is the key update: replace 1 with snake emoji 🐍 **
 socket.on("yourDice", (dice) => {
-  yourDiceDiv.textContent = dice
-    .map((d) => (d === 1 ? "🐍" : `🎲${d}`))
-    .join(" ");
+  yourDiceDiv.textContent = dice.map((d) => `🎲${d}`).join(" ");
 });
 
 socket.on("updatePlayers", (players) => {
   playersList.innerHTML = "";
   players.forEach((p) => {
     const li = document.createElement("li");
-    li.textContent = p.name;
+    li.textContent = `${p.name} (${p.diceCount} dice)`;
     if (p.id === currentTurnId) {
       li.style.fontWeight = "bold";
       li.style.color = "#ffa500";
@@ -80,15 +84,37 @@ socket.on("updatePlayers", (players) => {
 socket.on("updateBid", (bid) => {
   if (!bid) {
     currentBidDisplay.textContent = "No bids placed yet.";
-    return;
+    currentBids = [];
+  } else {
+    currentBidDisplay.textContent = `Current Bid: ${bid.count} x ${bid.value}'s (Total: ${bid.count * bid.value})`;
+    currentBids.push(bid); // update local bids list
   }
-  currentBidDisplay.textContent = `Bid: ${bid.count} × ${bid.value} (total ${bid.count + bid.value})`;
 });
 
-socket.on("result", ({ actualCount, lastBid, loser }) => {
-  resultMessage.textContent = `${loser} lost this round! Actual count of ${lastBid.value === 1 ? "🐍" : lastBid.value}'s (including wilds): ${actualCount}`;
+socket.on("currentTurn", (playerId) => {
+  currentTurnId = playerId;
+  // Refresh players list to highlight current player
+  socket.emit("requestPlayers");
+});
+
+socket.on("result", ({ actualCount, lastBid, resultText, loserName }) => {
+  resultMessage.textContent = `${resultText} Actual count: ${actualCount} ${lastBid.value}'s`;
 });
 
 socket.on("invalidBid", (msg) => {
   alert(msg);
+});
+
+socket.on("invalidCall", (msg) => {
+  alert(msg);
+});
+
+socket.on("gameOver", ({ winner }) => {
+  alert(`Game over! Winner is ${winner}.`);
+  location.reload();
+});
+
+// Request updated players list on demand (you can implement if needed)
+socket.on("connect", () => {
+  socket.emit("requestPlayers");
 });
