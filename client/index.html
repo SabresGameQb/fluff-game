@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Fluff — Liar's Dice</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="joinArea">
+    <h1>🎲 Fluff — Liar's Dice</h1>
+    <input id="nameInput" placeholder="Your name" />
+    <input id="roomInput" placeholder="Room ID" />
+    <button id="joinBtn">Join Room</button>
+    <div id="joinStatus"></div>
+  </div>
+
+  <div id="gameArea" style="display:none;">
+    <h2>Room: <span id="roomName"></span></h2>
+    <h3>Players:</h3>
+    <ul id="playersList"></ul>
+    <h3>Your Dice:</h3>
+    <div id="yourDice"></div>
+
+    <div id="turnInfo"></div>
+
+    <div id="bidControls" style="margin-top:20px;">
+      <input id="bidCount" type="number" min="1" placeholder="Count" />
+      <input id="bidValue" type="number" min="1" max="6" placeholder="Value (1-6)" />
+      <button id="placeBidBtn">Place Bid</button>
+      <button id="callFluffBtn">Call Fluff</button>
+    </div>
+
+    <div id="currentBidDisplay" style="margin-top:20px; font-weight:bold;"></div>
+    <div id="resultMessage" style="margin-top:20px; color: lightgreen;"></div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>
