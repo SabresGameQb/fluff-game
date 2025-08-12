@@ -1,32 +1,18 @@
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
-const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static("public"));
 
 const rooms = {};
 
-// Roll dice utility
+// Utility: Roll dice
 function rollDice(count) {
   return Array.from({ length: count }, () => Math.floor(Math.random() * 6) + 1);
-}
-
-// Helper: Get next active player index
-function nextActiveIndex(room, currentIndex) {
-  const players = rooms[room].players;
-  if (players.length === 0) return -1;
-
-  let nextIndex = currentIndex;
-  do {
-    nextIndex = (nextIndex + 1) % players.length;
-  } while (players[nextIndex].dice.length === 0 && nextIndex !== currentIndex);
-
-  return nextIndex;
 }
 
 io.on("connection", (socket) => {
@@ -34,17 +20,10 @@ io.on("connection", (socket) => {
 
   socket.on("joinRoom", ({ roomId, name }) => {
     if (!rooms[roomId]) {
-      rooms[roomId] = {
-        players: [],
-        bids: [],
-        turnIndex: 0,
-      };
+      rooms[roomId] = { players: [], bids: [], turnIndex: 0 };
     }
 
-    const room = rooms[roomId];
-
-    // Add player with 5 dice
-    room.players.push({
+    rooms[roomId].players.push({
       id: socket.id,
       name,
       dice: rollDice(5),
@@ -52,160 +31,146 @@ io.on("connection", (socket) => {
 
     socket.join(roomId);
 
-    // Send private dice to player
-    io.to(socket.id).emit("yourDice", room.players.find((p) => p.id === socket.id).dice);
+    // Send dice to player
+    io.to(socket.id).emit("yourDice", rooms[roomId].players.find(p => p.id === socket.id).dice);
 
-    // Broadcast player list and bids and current turn
-    io.to(roomId).emit("updatePlayers", room.players.map(p => ({ id: p.id, name: p.name, diceCount: p.dice.length })));
-    io.to(roomId).emit("updateBid", room.bids.length ? room.bids[room.bids.length -1] : null);
-    io.to(roomId).emit("currentTurn", room.players[room.turnIndex]?.id || null);
+    // Broadcast updated players + dice count
+    io.to(roomId).emit(
+      "updatePlayers",
+      rooms[roomId].players.map(p => ({
+        id: p.id,
+        name: p.name,
+        diceCount: p.dice.length,
+      }))
+    );
+
+    // Send current bid and current turn
+    const room = rooms[roomId];
+    io.to(roomId).emit("updateBid", room.bids.length > 0 ? room.bids[room.bids.length - 1] : null);
+    io.to(roomId).emit("currentTurn", room.players[room.turnIndex].id);
   });
 
   socket.on("placeBid", ({ roomId, count, value }) => {
     const room = rooms[roomId];
     if (!room) return;
-    const playerIndex = room.players.findIndex(p => p.id === socket.id);
-    if (playerIndex !== room.turnIndex) {
-      io.to(socket.id).emit("invalidBid", "It's not your turn.");
+
+    // Check if exact same bid already made this round
+    const duplicateBid = room.bids.find(bid => bid.count === count && bid.value === value);
+    if (duplicateBid) {
+      io.to(socket.id).emit("invalidBid", "This exact bid has already been made this round.");
       return;
     }
 
-    // Fluff rule validation:
-    // No exact duplicates allowed
-    // New bid total (count * value) must be > previous bid total
-    // or if equal total, count or value must differ (strictly higher)
-    const lastBid = room.bids.length ? room.bids[room.bids.length - 1] : null;
-    const newTotal = count * value;
+    const lastBid = room.bids.length > 0 ? room.bids[room.bids.length - 1] : null;
 
     if (lastBid) {
       const lastTotal = lastBid.count * lastBid.value;
+      const currentTotal = count * value;
 
-      if (newTotal < lastTotal) {
-        io.to(socket.id).emit("invalidBid", "Bid total must be higher than previous bid total.");
-        return;
-      }
-      if (newTotal === lastTotal && count === lastBid.count && value === lastBid.value) {
-        io.to(socket.id).emit("invalidBid", "Bid must not be the exact same as previous bid.");
+      if (currentTotal < lastTotal) {
+        io.to(socket.id).emit("invalidBid", `Your bid total (${currentTotal}) must be at least as high as the previous bid total (${lastTotal}).`);
         return;
       }
     }
 
-    room.bids.push({ count, value, playerId: socket.id });
+    room.bids.push({ count, value });
 
-    // Advance turn skipping eliminated players
-    room.turnIndex = nextActiveIndex(roomId, room.turnIndex);
+    // Advance turn
+    room.turnIndex = (room.turnIndex + 1) % room.players.length;
 
-    io.to(roomId).emit("updateBid", room.bids[room.bids.length -1]);
-    io.to(roomId).emit("updatePlayers", room.players.map(p => ({ id: p.id, name: p.name, diceCount: p.dice.length })));
-    io.to(roomId).emit("currentTurn", room.players[room.turnIndex]?.id || null);
+    io.to(roomId).emit("updateBid", { count, value });
+
+    io.to(roomId).emit(
+      "updatePlayers",
+      room.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        diceCount: p.dice.length,
+      }))
+    );
+
+    io.to(roomId).emit("currentTurn", room.players[room.turnIndex].id);
   });
 
   socket.on("callFluff", ({ roomId }) => {
     const room = rooms[roomId];
     if (!room) return;
 
-    const callerIndex = room.players.findIndex(p => p.id === socket.id);
-    if (callerIndex !== room.turnIndex) {
-      io.to(socket.id).emit("invalidCall", "You can only call Fluff on your turn.");
-      return;
-    }
+    const lastBid = room.bids.length > 0 ? room.bids[room.bids.length - 1] : null;
+    if (!lastBid) return;
 
-    const lastBid = room.bids.length ? room.bids[room.bids.length -1] : null;
-    if (!lastBid) {
-      io.to(socket.id).emit("invalidCall", "No bid to call Fluff on.");
-      return;
-    }
-
-    // Count actual dice matching bid.value or wild (1)
+    // Count dice that match lastBid.value or wilds (1's)
     let actualCount = 0;
-    room.players.forEach(p => {
-      p.dice.forEach(die => {
-        if (die === lastBid.value || die === 1) actualCount++;
+    room.players.forEach(player => {
+      player.dice.forEach(die => {
+        if (die === lastBid.value || die === 1) {
+          actualCount++;
+        }
       });
     });
 
-    const bidderIndex = room.players.findIndex(p => p.id === lastBid.playerId);
-    const caller = room.players[callerIndex];
-    const bidder = room.players[bidderIndex];
+    const caller = room.players.find(p => p.id === socket.id);
 
-    let loserIndex;
+    // Player who made the last bid is previous player (turnIndex points to next player)
+    const lastBidderIndex = (room.turnIndex - 1 + room.players.length) % room.players.length;
+    const lastBidder = room.players[lastBidderIndex];
+
+    // Determine loser
+    let loser;
     let resultText;
-
     if (actualCount >= lastBid.count) {
-      // Bidder was correct -> caller loses one die
-      loserIndex = callerIndex;
-      resultText = `${bidder.name}'s bid was correct! ${caller.name} loses one die.`;
+      // Bid was correct, caller loses
+      loser = caller;
+      resultText = `${caller.name} called Fluff wrongly and loses a die.`;
     } else {
-      // Bidder was wrong -> bidder loses one die
-      loserIndex = bidderIndex;
-      resultText = `${bidder.name}'s bid was incorrect! ${bidder.name} loses one die.`;
+      // Bid was wrong, last bidder loses
+      loser = lastBidder;
+      resultText = `${caller.name} called Fluff correctly! ${lastBidder.name} loses a die.`;
     }
 
     // Remove one die from loser
-    if (loserIndex >= 0) {
-      const loser = room.players[loserIndex];
-      loser.dice.pop(); // remove one die
+    loser.dice.pop();
+
+    // Check if game over (no dice left)
+    if (loser.dice.length === 0) {
+      io.to(roomId).emit("gameOver", { winner: room.players.find(p => p.id !== loser.id).name || "Unknown" });
+      // Reset game state for this room
+      delete rooms[roomId];
+      return;
     }
 
-    // Remove players with no dice
-    room.players = room.players.filter(p => p.dice.length > 0);
-
-    // Reset bids for next round
+    // Reset bids and reroll dice for next round
     room.bids = [];
-
-    // Reset turn index if current turn player eliminated
-    if (!room.players[room.turnIndex]) {
-      room.turnIndex = 0;
-    } else {
-      // Move to next active player after loser
-      room.turnIndex = nextActiveIndex(roomId, loserIndex);
-    }
-
-    // Re-roll dice for all alive players
     room.players.forEach(p => {
       p.dice = rollDice(p.dice.length);
-      io.to(p.id).emit("yourDice", p.dice);
     });
 
-    io.to(roomId).emit("updatePlayers", room.players.map(p => ({ id: p.id, name: p.name, diceCount: p.dice.length })));
+    io.to(roomId).emit("result", { actualCount, lastBid, resultText, loserName: loser.name });
+
+    io.to(roomId).emit(
+      "updatePlayers",
+      room.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        diceCount: p.dice.length,
+      }))
+    );
+
     io.to(roomId).emit("updateBid", null);
-    io.to(roomId).emit("currentTurn", room.players[room.turnIndex]?.id || null);
-    io.to(roomId).emit("result", {
-      actualCount,
-      lastBid,
-      resultText,
-      loserName: room.players[loserIndex]?.name || "Player",
-    });
-
-    // Check for winner
-    if (room.players.length === 1) {
-      io.to(roomId).emit("gameOver", { winner: room.players[0].name });
-      delete rooms[roomId];
-    }
+    io.to(roomId).emit("currentTurn", room.players[room.turnIndex].id);
   });
 
   socket.on("disconnect", () => {
-    // Remove player from all rooms
     for (const roomId in rooms) {
-      const room = rooms[roomId];
-      const playerIndex = room.players.findIndex(p => p.id === socket.id);
-      if (playerIndex !== -1) {
-        const leavingPlayer = room.players.splice(playerIndex, 1)[0];
-        io.to(roomId).emit("updatePlayers", room.players.map(p => ({ id: p.id, name: p.name, diceCount: p.dice.length })));
-
-        // Adjust turnIndex if necessary
-        if (playerIndex < room.turnIndex) {
-          room.turnIndex--;
-        } else if (playerIndex === room.turnIndex) {
-          room.turnIndex = room.players.length ? room.turnIndex % room.players.length : 0;
-          io.to(roomId).emit("currentTurn", room.players[room.turnIndex]?.id || null);
-        }
-
-        // Clean up empty rooms
-        if (room.players.length === 0) {
-          delete rooms[roomId];
-        }
-      }
+      rooms[roomId].players = rooms[roomId].players.filter(p => p.id !== socket.id);
+      io.to(roomId).emit(
+        "updatePlayers",
+        rooms[roomId].players.map(p => ({
+          id: p.id,
+          name: p.name,
+          diceCount: p.dice.length,
+        }))
+      );
     }
     console.log("User disconnected:", socket.id);
   });
