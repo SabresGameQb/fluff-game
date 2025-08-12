@@ -1,0 +1,6 @@
+body { font-family: Arial, Helvetica, sans-serif; background:#f6f7fb; color:#222; padding:20px;}
+.card { background:white; padding:16px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.06); max-width:720px; margin:auto;}
+#yourDice span { display:inline-block; padding:8px 12px; margin:6px; border-radius:6px; background:#eef; font-weight:bold;}
+button { padding:8px 12px; margin:6px; }
+#playersList li { margin:6px 0; }
+#roundLog { margin-top:12px; background:#fafafa; padding:8px; border-radius:6px; min-height:40px;}
