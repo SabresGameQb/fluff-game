@@ -64,7 +64,7 @@ callFluffBtn.onclick = () => {
 };
 
 socket.on("yourDice", (dice) => {
-  yourDiceDiv.textContent = dice.map((d) => `🎲${d}`).join(" ");
+  yourDiceDiv.textContent = dice.map((d) => (d === 1 ? "🐍" : `🎲${d}`)).join(" ");
 });
 
 socket.on("updatePlayers", (players) => {
