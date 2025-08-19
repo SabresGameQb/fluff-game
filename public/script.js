@@ -1,120 +1,79 @@
 const socket = io();
 
-const joinArea = document.getElementById("joinArea");
-const gameArea = document.getElementById("gameArea");
 const joinBtn = document.getElementById("joinBtn");
-const nameInput = document.getElementById("nameInput");
-const roomInput = document.getElementById("roomInput");
-const joinStatus = document.getElementById("joinStatus");
+const startBtn = document.getElementById("startBtn");
+const betBtn = document.getElementById("betBtn");
+const callBtn = document.getElementById("callBtn");
+const output = document.getElementById("output");
 
-const roomNameDisplay = document.getElementById("roomName");
-const playersList = document.getElementById("playersList");
-const yourDiceDiv = document.getElementById("yourDice");
-const turnInfo = document.getElementById("turnInfo");
-const bidCountInput = document.getElementById("bidCount");
-const bidValueInput = document.getElementById("bidValue");
-const placeBidBtn = document.getElementById("placeBidBtn");
-const callFluffBtn = document.getElementById("callFluffBtn");
-const currentBidDisplay = document.getElementById("currentBidDisplay");
-const resultMessage = document.getElementById("resultMessage");
+let currentTurn = null;
+let myId = null;
 
-let currentTurnId = null;
-let currentBids = []; // Track bids to prevent duplicates on client side (optional)
+socket.on("connect", () => {
+  myId = socket.id;
+});
 
 joinBtn.onclick = () => {
-  const name = nameInput.value.trim();
-  const room = roomInput.value.trim();
-  if (!name || !room) {
-    joinStatus.textContent = "Please enter your name and room ID.";
-    return;
-  }
-  joinStatus.textContent = "";
-  socket.emit("joinRoom", { roomId: room, name });
-  roomNameDisplay.textContent = room;
-  joinArea.style.display = "none";
-  gameArea.style.display = "block";
+  const name = document.getElementById("nameInput").value;
+  if (name) socket.emit("joinGame", name);
 };
 
-placeBidBtn.onclick = () => {
-  const count = parseInt(bidCountInput.value);
-  const value = parseInt(bidValueInput.value);
-
-  if (!count || !value || value < 1 || value > 6) {
-    alert("Please enter valid bid count and value.");
-    return;
-  }
-
-  // Optional: check if bid already played locally
-  if (currentBids.some(b => b.count === count && b.value === value)) {
-    alert("This exact bid has already been made this round.");
-    return;
-  }
-
-  socket.emit("placeBid", {
-    roomId: roomNameDisplay.textContent,
-    count,
-    value,
-  });
-  resultMessage.textContent = "";
+startBtn.onclick = () => {
+  socket.emit("startGame");
 };
 
-callFluffBtn.onclick = () => {
-  socket.emit("callFluff", { roomId: roomNameDisplay.textContent });
-  resultMessage.textContent = "";
+betBtn.onclick = () => {
+  const count = parseInt(document.getElementById("betCount").value);
+  const value = document.getElementById("betValue").value;
+  if (count && value) {
+    socket.emit("makeBet", { count, value });
+  }
 };
 
-socket.on("yourDice", (dice) => {
-  yourDiceDiv.textContent = dice.map((d) => (d === 1 ? "🐍" : `🎲${d}`)).join(" ");
-});
+callBtn.onclick = () => {
+  socket.emit("callBluff");
+};
 
-socket.on("updatePlayers", (players) => {
-  playersList.innerHTML = "";
-  players.forEach((p) => {
-    const li = document.createElement("li");
-    li.textContent = `${p.name} (${p.diceCount} dice)`;
-    if (p.id === currentTurnId) {
-      li.style.fontWeight = "bold";
-      li.style.color = "#ffa500";
-      li.textContent += " ← Current Turn";
-    }
-    playersList.appendChild(li);
+socket.on("playerList", (players) => {
+  output.innerHTML = `<h3>Players</h3>`;
+  Object.values(players).forEach(p => {
+    output.innerHTML += `<p>${p.name} - ${p.diceCount} dice</p>`;
   });
 });
 
-socket.on("updateBid", (bid) => {
-  if (!bid) {
-    currentBidDisplay.textContent = "No bids placed yet.";
-    currentBids = [];
-  } else {
-    currentBidDisplay.textContent = `Current Bid: ${bid.count} x ${bid.value}'s (Total: ${bid.count * bid.value})`;
-    currentBids.push(bid); // update local bids list
+socket.on("roundStarted", (data) => {
+  output.innerHTML += `<h3>New Round!</h3>`;
+  output.innerHTML += `<p>It's ${data.players[data.currentTurn].name}'s turn</p>`;
+  if (data.players[myId]) {
+    output.innerHTML += `<p>Your dice: ${data.players[myId].dice.join(", ")}</p>`;
   }
+  currentTurn = data.currentTurn;
 });
 
-socket.on("currentTurn", (playerId) => {
-  currentTurnId = playerId;
-  // Refresh players list to highlight current player
-  socket.emit("requestPlayers");
+socket.on("turnChanged", (data) => {
+  currentTurn = data.currentTurn;
+  output.innerHTML += `<p>Now it's ${data.currentTurn}'s turn</p>`;
 });
 
-socket.on("result", ({ actualCount, lastBid, resultText, loserName }) => {
-  resultMessage.textContent = `${resultText} Actual count: ${actualCount} ${lastBid.value}'s`;
+socket.on("betMade", (data) => {
+  output.innerHTML += `<p>${data.player} bets ${data.bet.count} ${data.bet.value}'s</p>`;
 });
 
-socket.on("invalidBid", (msg) => {
-  alert(msg);
+socket.on("betRejected", (msg) => {
+  output.innerHTML += `<p style="color:red;">${msg}</p>`;
 });
 
-socket.on("invalidCall", (msg) => {
-  alert(msg);
+socket.on("bluffResult", (data) => {
+  output.innerHTML += `<h3>Bluff called!</h3>`;
+  output.innerHTML += `<p>Bet was ${data.bet.count} ${data.bet.value}'s</p>`;
+  output.innerHTML += `<p>Actual count: ${data.totalCount}</p>`;
+  output.innerHTML += `<p>${data.loser} loses a die!</p>`;
 });
 
-socket.on("gameOver", ({ winner }) => {
-  alert(`Game over! Winner is ${winner}.`);
-  location.reload();
+socket.on("playerOut", (data) => {
+  output.innerHTML += `<p style="color:red;">${data.name} is out of the game!</p>`;
 });
 
-// Request updated players list on demand (you can implement if needed)
-socket.on("connect", () => {
-  socket.emit("requestPlayers");
+socket.on("gameOver", (data) => {
+  output.innerHTML += `<h2>🏆 ${data.winner} wins the game!</h2>`;
 });
