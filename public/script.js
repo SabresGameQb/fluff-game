@@ -6,7 +6,6 @@ const betBtn = document.getElementById("betBtn");
 const callBtn = document.getElementById("callBtn");
 const output = document.getElementById("output");
 
-let currentTurn = null;
 let myId = null;
 
 socket.on("connect", () => {
@@ -14,7 +13,7 @@ socket.on("connect", () => {
 });
 
 joinBtn.onclick = () => {
-  const name = document.getElementById("nameInput").value;
+  const name = document.getElementById("nameInput").value.trim();
   if (name) socket.emit("joinGame", name);
 };
 
@@ -24,7 +23,7 @@ startBtn.onclick = () => {
 
 betBtn.onclick = () => {
   const count = parseInt(document.getElementById("betCount").value);
-  const value = document.getElementById("betValue").value;
+  const value = parseInt(document.getElementById("betValue").value);
   if (count && value) {
     socket.emit("makeBet", { count, value });
   }
@@ -36,7 +35,7 @@ callBtn.onclick = () => {
 
 socket.on("playerList", (players) => {
   output.innerHTML = `<h3>Players</h3>`;
-  Object.values(players).forEach(p => {
+  Object.values(players).forEach((p) => {
     output.innerHTML += `<p>${p.name} - ${p.diceCount} dice</p>`;
   });
 });
@@ -45,13 +44,14 @@ socket.on("roundStarted", (data) => {
   output.innerHTML += `<h3>New Round!</h3>`;
   output.innerHTML += `<p>It's ${data.players[data.currentTurn].name}'s turn</p>`;
   if (data.players[myId]) {
-    output.innerHTML += `<p>Your dice: ${data.players[myId].dice.join(", ")}</p>`;
+    const dice = data.players[myId].dice
+      .map((d) => (d === 1 ? "🐍" : `🎲${d}`))
+      .join(" ");
+    output.innerHTML += `<p>Your dice: ${dice}</p>`;
   }
-  currentTurn = data.currentTurn;
 });
 
 socket.on("turnChanged", (data) => {
-  currentTurn = data.currentTurn;
   output.innerHTML += `<p>Now it's ${data.currentTurn}'s turn</p>`;
 });
 
